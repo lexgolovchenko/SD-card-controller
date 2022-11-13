@@ -58,39 +58,39 @@
 
 module sdc_controller(
            // WISHBONE common
-           wb_clk_i, 
-           wb_rst_i, 
+           wb_clk_i,
+           wb_rst_i,
            // WISHBONE slave
-           wb_dat_i, 
+           wb_dat_i,
            wb_dat_o,
-           wb_adr_i, 
-           wb_sel_i, 
-           wb_we_i, 
-           wb_cyc_i, 
-           wb_stb_i, 
+           wb_adr_i,
+           wb_sel_i,
+           wb_we_i,
+           wb_cyc_i,
+           wb_stb_i,
            wb_ack_o,
            // WISHBONE master
            m_wb_dat_o,
            m_wb_dat_i,
-           m_wb_adr_o, 
-           m_wb_sel_o, 
+           m_wb_adr_o,
+           m_wb_sel_o,
            m_wb_we_o,
            m_wb_cyc_o,
-           m_wb_stb_o, 
+           m_wb_stb_o,
            m_wb_ack_i,
-           m_wb_cti_o, 
+           m_wb_cti_o,
            m_wb_bte_o,
            //SD BUS
-           sd_cmd_dat_i, 
-           sd_cmd_out_o, 
-           sd_cmd_oe_o, 
+           sd_cmd_dat_i,
+           sd_cmd_out_o,
+           sd_cmd_oe_o,
            //card_detect,
-           sd_dat_dat_i, 
-           sd_dat_out_o, 
-           sd_dat_oe_o, 
+           sd_dat_dat_i,
+           sd_dat_out_o,
+           sd_dat_oe_o,
            sd_clk_o_pad,
            sd_clk_i_pad,
-           int_cmd, 
+           int_cmd,
            int_data
        );
 
@@ -239,8 +239,8 @@ sd_cmd_master sd_cmd_master0(
 
 sd_cmd_serial_host cmd_serial_host0(
     .sd_clk     (sd_clk_o),
-    .rst        (wb_rst_i | 
-                 software_reset_reg_sd_clk[0] | 
+    .rst        (wb_rst_i |
+                 software_reset_reg_sd_clk[0] |
                  go_idle),
     .setting_i  (cmd_setting),
     .cmd_i      (cmd),
@@ -256,7 +256,7 @@ sd_cmd_serial_host cmd_serial_host0(
 
 sd_data_master sd_data_master0(
     .sd_clk           (sd_clk_o),
-    .rst              (wb_rst_i | 
+    .rst              (wb_rst_i |
                        software_reset_reg_sd_clk[0]),
     .start_tx_i       (data_start_tx),
     .start_rx_i       (data_start_rx),
@@ -293,7 +293,7 @@ sd_data_serial_host sd_data_serial_host0(
     .busy           (data_busy),
     .crc_ok         (data_crc_ok)
     );
-           
+
 sd_fifo_filler sd_fifo_filler0(
     .wb_clk    (wb_clk_i),
     .rst       (wb_rst_i | software_reset_reg_sd_clk[0]),
@@ -315,7 +315,9 @@ sd_fifo_filler sd_fifo_filler0(
     .sd_empty_o   (tx_fifo_empty),
     .sd_full_o   (rx_fifo_full),
     .wb_empty_o   (),
-    .wb_full_o    (tx_fifo_full)
+    .wb_full_o    (tx_fifo_full),
+    .start_tx_i       (data_start_tx),
+    .start_rx_i       (data_start_rx)
     );
 
 assign xfersize = (block_size_reg_wb_clk + 1'b1) * (block_count_reg_wb_clk + 1'b1);
@@ -332,10 +334,10 @@ sd_wb_sel_ctrl sd_wb_sel_ctrl0(
 sd_data_xfer_trig sd_data_xfer_trig0 (
     .sd_clk                (sd_clk_o),
     .rst                   (wb_rst_i | software_reset_reg_sd_clk[0]),
-    .cmd_with_data_start_i (cmd_start_sd_clk & 
-                            (command_reg_sd_clk[`CMD_WITH_DATA] != 
+    .cmd_with_data_start_i (cmd_start_sd_clk &
+                            (command_reg_sd_clk[`CMD_WITH_DATA] !=
                              2'b00)),
-    .r_w_i                 (command_reg_sd_clk[`CMD_WITH_DATA] == 
+    .r_w_i                 (command_reg_sd_clk[`CMD_WITH_DATA] ==
                             2'b01),
     .cmd_int_status_i      (cmd_int_status_reg_sd_clk),
     .start_tx_o            (data_start_tx),

@@ -120,7 +120,7 @@ module generic_dpram(
 	input           rce;   // read port chip enable, active high
 	input           oe;	   // output enable, active high
 	input  [aw-1:0] raddr; // read address
-	output [dw-1:0] dout;  // data output
+	output reg [dw-1:0] dout;  // data output
 
 	// write port
 	input          wclk;  // write clock, rising edge trigger
@@ -145,11 +145,14 @@ module generic_dpram(
 	reg [aw-1:0] ra;                 // register read address
 
 	// read operation
-	always @(posedge rclk)
-	  if (rce)
-	    ra <= raddr;
+	// always @(posedge rclk)
+	//   if (rce)
+	//     ra <= raddr;
 
-	assign dout = mem[ra];
+	always @(posedge rclk)
+		dout <= mem[raddr];
+
+	// assign dout = mem[ra];
 
 	// write operation
 	always@(posedge wclk)
