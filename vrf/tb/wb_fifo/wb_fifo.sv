@@ -1,7 +1,9 @@
 
 `default_nettype none
 
-module wb_fifo (
+module wb_fifo #(
+    parameter ENABLE_VCD = 1
+)(
     input  wire        clk_i    ,
     input  wire        rst_i    ,
 
@@ -171,7 +173,7 @@ module wb_fifo (
     // ----------------------------------------------------------------
     //
 
-    initial begin
+    initial if (ENABLE_VCD) begin
         $dumpfile("wb_fifo.vcd");
         $dumpvars(0, wb_fifo);
     end

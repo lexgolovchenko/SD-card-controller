@@ -199,7 +199,10 @@ reg add_wrong_cmd_crc;
 reg add_wrong_cmd_indx;
 reg add_wrong_data_crc;
 
+reg finish_data = 0;
+
 initial begin
+  finish_data = 0;
   add_wrong_data_crc<=0;
   add_wrong_cmd_indx<=0;
   add_wrong_cmd_crc<=0;
@@ -305,10 +308,14 @@ case(dataState)
  end
 
  READ_WAITS: begin
-   if ( dat[0] == 1'b0 )
-     next_datastate =  READ_DATA;
-   else
-     next_datastate =  READ_WAITS;
+    if (finish_data)
+      next_datastate =  DATA_IDLE;
+    else begin
+      if ( dat[0] == 1'b0 )
+        next_datastate =  READ_DATA;
+      else
+        next_datastate =  READ_WAITS;
+    end
  end
 
  READ_DATA : begin
@@ -539,6 +546,7 @@ always @ (posedge sdClk) begin
         end
 
 		  12: begin
+          finish_data = 1;
           response_CMD[127:96] <= CardStatus ;
           stop<=1;
 		  mult_write <= 0;
@@ -562,6 +570,7 @@ always @ (posedge sdClk) begin
                 CardStatus[12:9] <=`DATAS;//Put card in data state
                 response_CMD[127:96] <= CardStatus ;
                 BlockAddr = inCmd[39:8];
+                finish_data = 0;
                 if (BlockAddr%512 !=0)
                   $display("**Block Misalign Error");
           end
@@ -578,7 +587,8 @@ always @ (posedge sdClk) begin
             if (CardStatus[12:9] == `TRAN) begin //If card is in transferstate
                 CardStatus[12:9] <=`DATAS;//Put card in data state
                 response_CMD[127:96] <= CardStatus ;
-			    mult_read <= 1;
+			          mult_read <= 1;
+                finish_data = 0;
                 BlockAddr = inCmd[39:8];
                 if (BlockAddr%512 !=0)
                   $display("**Block Misalign Error");
@@ -599,6 +609,7 @@ always @ (posedge sdClk) begin
                 CardStatus[12:9] <=`RCV;//Put card in Rcv state
                 response_CMD[127:96] <= CardStatus ;
                 BlockAddr = inCmd[39:8];
+                finish_data = 0;
                 if (BlockAddr%512 !=0) begin
                   $display("BlodkAddr = %0d", BlockAddr);
                   $display("**Block Misalign Error");
@@ -623,7 +634,8 @@ always @ (posedge sdClk) begin
                 CardStatus[12:9] <=`RCV;//Put card in Rcv state
                 response_CMD[127:96] <= CardStatus ;
                 BlockAddr = inCmd[39:8];
-				mult_write <= 1;
+				        mult_write <= 1;
+                finish_data = 0;
                 if (BlockAddr%512 !=0)
                   $display("**Block Misalign Error");
               end
@@ -986,6 +998,8 @@ begin
   add_wrong_cmd_crc<=0;
  cardIdentificationState<=1;
   state<=IDLE;
+  mult_write<=0;
+  mult_read<=0;
   dataState<=DATA_IDLE;
   Busy<=0;
   oeCmd<=0;

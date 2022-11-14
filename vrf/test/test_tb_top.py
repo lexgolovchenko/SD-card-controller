@@ -40,16 +40,18 @@ BLOCK_SIZE = 512
 FLASH_BLOCKS = 0
 
 
-class WbId(IntEnum):
+class WbDmaId(IntEnum):
     RAM0 = 0
     RAM1 = 1
     FIFO0 = 2
     FIFO1 = 3
 
 
-WB_BASE_ADDR = {
-    WbId.RAM0 : 0x00000000,
-    WbId.RAM1 : 0x80000000
+WB_DMA_BASE_ADDR = {
+    WbDmaId.RAM0  : 0x00000000,
+    WbDmaId.RAM1  : 0x40000000,
+    WbDmaId.FIFO0 : 0x80000000,
+    WbDmaId.FIFO1 : 0xc0000000
 }
 
 
@@ -57,7 +59,7 @@ def get_memory_base_address(dut, mem_idx) -> int:
     # AW = int(dut.AW)
     # print(dut.mux_base_addr_export[1:0].value)
     # return dut.mux_base_addr_export[mem_idx].value.integer
-    return WB_BASE_ADDR[mem_idx]
+    return WB_DMA_BASE_ADDR[mem_idx]
 
 
 def get_ram_start_block_addr(ram, blocks_num) -> int:
@@ -215,8 +217,8 @@ async def memory_backdoor_test(dut):
     dut._log.info("Memory backdoor test")
     await wait_reset_release(dut)
     await Timer(1, units="us")
-    await ram_backdoor_test(dut, WbId.RAM0, 1, 10)
-    await ram_backdoor_test(dut, WbId.RAM1, 1, 10)
+    await ram_backdoor_test(dut, WbDmaId.RAM0, 1, 10)
+    await ram_backdoor_test(dut, WbDmaId.RAM1, 1, 10)
     await sd_backdoor_test(dut, 1, 10)
     dut._log.info("Done!")
 
@@ -231,10 +233,11 @@ async def write_from_ram_to_sd_test(dut):
     await sdc_setup_card_to_transfer(wbm)
 
     for _ in range(5):
-        await write_from_ram_to_sd(dut, wbm, WbId.RAM0, 1, 10)
-        await write_from_ram_to_sd(dut, wbm, WbId.RAM1, 1, 10)
+        await write_from_ram_to_sd(dut, wbm, WbDmaId.RAM0, 1, 10)
+        await write_from_ram_to_sd(dut, wbm, WbDmaId.RAM1, 1, 10)
 
     dut._log.info("Done!")
+
 
 @cocotb.test()
 async def read_to_ram_from_sd_test(dut):
@@ -246,7 +249,95 @@ async def read_to_ram_from_sd_test(dut):
     await sdc_setup_card_to_transfer(wbm)
 
     for _ in range(5):
-        await read_to_ram_from_sd(dut, wbm, WbId.RAM0, 1, 10)
-        await read_to_ram_from_sd(dut, wbm, WbId.RAM1, 1, 10)
+        await read_to_ram_from_sd(dut, wbm, WbDmaId.RAM0, 1, 10)
+        await read_to_ram_from_sd(dut, wbm, WbDmaId.RAM1, 1, 10)
 
     dut._log.info("Done!")
+
+
+# ------------------------------------------------------------------
+# Testcases with fifo
+# ------------------------------------------------------------------
+#
+
+class WbId(IntEnum):
+    SDC   = 0
+    FIFO0 = 1
+    FIFO1 = 2
+
+
+WB_BASE_ADDR = {
+    WbId.SDC   : 0x00000000,
+    WbId.FIFO0 : 0x40000000,
+    WbId.FIFO1 : 0x80000000,
+}
+
+
+class FifoAddr(IntEnum):
+    DATA   = 0x00000000
+    STATUS = 0x01000000
+
+
+async def wb_write(wbm: WishboneMaster, adr: int, data: int):
+    await wbm.send_cycle([WBOp(adr=adr, idle=randint(0, 5), dat=data, sel=0xF)])
+
+
+async def wb_read(wbm: WishboneMaster, adr: int) -> int:
+    result = await wbm.send_cycle([WBOp(adr=adr, idle=randint(0, 5))])
+    return result[0].datrd.integer
+
+
+async def read_data_from_wb_fifo(wbm, block_num):
+    fifo_base_adr = WB_BASE_ADDR[WbId.FIFO0]
+    expected_count = block_num * (BLOCK_SIZE // 4)
+
+    stat_adr = fifo_base_adr | FifoAddr.STATUS
+    rd_stat = await wb_read(wbm, stat_adr)
+    count = rd_stat >> 1
+    assert count == expected_count
+
+    data32 = []
+    for _ in range(block_num):
+        blk32 = []
+        for _ in range(BLOCK_SIZE // 4):
+            val32 = await wb_read(wbm, fifo_base_adr | FifoAddr.DATA)
+            blk32.append(val32)
+        data32.append(blk32)
+
+    return data32
+
+
+async def read_to_fifo_from_sd(dut, wbm, blk_min=1, blk_max=1):
+    # Generate test data
+    wrdat = TestData(blk_min, blk_max)
+    wrdat.randomize()
+
+    # Info
+    dut._log.info("Read {:0d} blocks from SD card to FIFO0".format(wrdat.block_num))
+
+    # Write data to SD
+    sd_start_adr = get_sd_start_addr(dut.sd_model, wrdat.block_num)
+    sd_model_backdoor_write(dut.sd_model, sd_start_adr, wrdat)
+
+    # Write data to SD
+    await sdc_read_blocks(wbm, sd_start_adr, WB_DMA_BASE_ADDR[WbDmaId.FIFO0], wrdat.block_num)
+    await Timer(1, units="us")
+
+    # Read data from WB FIFO
+    fifo_rddat32 = await read_data_from_wb_fifo(wbm, wrdat.block_num)
+
+    # Compare result
+    assert compare_data(wrdat.data32, fifo_rddat32)
+
+
+@cocotb.test()
+async def read_to_fifo_from_sd_test(dut):
+    await wait_reset_release(dut)
+    await Timer(1, units="us")
+
+    wbm = wishbone_master_init(dut)
+    await sdc_initial_core_setup(wbm)
+    await sdc_setup_card_to_transfer(wbm)
+
+    for _ in range(10):
+        await read_to_fifo_from_sd(dut, wbm, 1, 4)

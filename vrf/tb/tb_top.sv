@@ -5,7 +5,7 @@ module tb_top (
     // WISHBONE slave
     input  wire [31:0] wb_dat_i ,
     output wire [31:0] wb_dat_o ,
-    input  wire [7:0]  wb_adr_i ,
+    input  wire [31:0] wb_adr_i ,
     input  wire [3:0]  wb_sel_i ,
     input  wire        wb_we_i  ,
     input  wire        wb_cyc_i ,
@@ -27,7 +27,6 @@ module tb_top (
         $dumpvars(0, tb_top);
     end
 
-
     // ----------------------------------------------------------------
     // Clock & Reset
     // ----------------------------------------------------------------
@@ -40,6 +39,80 @@ module tb_top (
 
     always  #(T_CLK_NS / 2) wb_clk = ~wb_clk;
     initial #(100 * T_CLK_NS) wb_rst = 1'b0;
+
+    // ----------------------------------------------------------------
+    // Wishbone slave MUX
+    // ----------------------------------------------------------------
+    //
+
+    localparam DW = 32;
+    localparam AW = 32;
+    localparam SLV_N = 3;
+
+    // Slave IDs
+    localparam WB_SDC_ID   = 0;
+    localparam WB_FIFO0_ID = 1;
+    localparam WB_FIFO1_ID = 2;
+
+    localparam [SLV_N*AW-1:0] MUX_MATCH_ADDR = {
+        {  2'd2, {(AW-2){1'b0}}  },
+        {  2'd1, {(AW-2){1'b0}}  },
+        {  2'd0, {(AW-2){1'b0}}  }
+    };
+
+    localparam [SLV_N*AW-1:0] MUX_MATCH_MASK = {
+        {  2'd3, {(AW-2){1'b0}}  },
+        {  2'd3, {(AW-2){1'b0}}  },
+        {  2'd3, {(AW-2){1'b0}}  }
+    };
+
+    // Wishbone Slave interface
+    wire [SLV_N-1:0][AW-1:0]  wbs_adr_o ;
+    wire [SLV_N-1:0][DW-1:0]  wbs_dat_o ;
+    wire [SLV_N-1:0][4-1:0]   wbs_sel_o ;
+    wire [SLV_N-1:0]          wbs_we_o  ;
+    wire [SLV_N-1:0]          wbs_cyc_o ;
+    wire [SLV_N-1:0]          wbs_stb_o ;
+    wire [SLV_N-1:0][DW-1:0]  wbs_dat_i ;
+    wire [SLV_N-1:0]          wbs_ack_i ;
+
+    wb_mux #(
+        .dw         ( DW             ),
+        .aw         ( AW             ),
+        .num_slaves ( SLV_N          ),
+        .MATCH_ADDR ( MUX_MATCH_ADDR ),
+        .MATCH_MASK ( MUX_MATCH_MASK )
+    ) wb_mux (
+        .wb_clk_i   ( wb_clk   ) ,
+        .wb_rst_i   ( wb_rst   ) ,
+        // Master interface
+        .wbm_adr_i  ( wb_adr_i ) ,
+        .wbm_dat_i  ( wb_dat_i ) ,
+        .wbm_sel_i  ( wb_sel_i ) ,
+        .wbm_we_i   ( wb_we_i  ) ,
+        .wbm_cyc_i  ( wb_cyc_i ) ,
+        .wbm_stb_i  ( wb_stb_i ) ,
+        .wbm_dat_o  ( wb_dat_o ) ,
+        .wbm_ack_o  ( wb_ack_o ) ,
+        .wbm_cti_i  ( '0  ) ,
+        .wbm_bte_i  ( '0  ) ,
+        .wbm_err_o  (     ) ,
+        .wbm_rty_o  (     ) ,
+        // Slave interfaces
+        .wbs_adr_o  ( wbs_adr_o ) ,
+        .wbs_dat_o  ( wbs_dat_o ) ,
+        .wbs_sel_o  ( wbs_sel_o ) ,
+        .wbs_we_o   ( wbs_we_o  ) ,
+        .wbs_cyc_o  ( wbs_cyc_o ) ,
+        .wbs_stb_o  ( wbs_stb_o ) ,
+        .wbs_dat_i  ( wbs_dat_i ) ,
+        .wbs_ack_i  ( wbs_ack_i ) ,
+        .wbs_cti_o  (    ) ,
+        .wbs_bte_o  (    ) ,
+        .wbs_err_i  ( '0 ) ,
+        .wbs_rty_i  ( '0 )
+    );
+
 
     // ----------------------------------------------------------------
     // SD controller instans
@@ -77,14 +150,14 @@ module tb_top (
         .wb_rst_i (wb_rst) ,
 
         // WISHBONE slave
-        .wb_dat_i ,
-        .wb_dat_o ,
-        .wb_adr_i ,
-        .wb_sel_i ,
-        .wb_we_i  ,
-        .wb_cyc_i ,
-        .wb_stb_i ,
-        .wb_ack_o ,
+        .wb_dat_i  ( wbs_dat_o[WB_SDC_ID] ) ,
+        .wb_dat_o  ( wbs_dat_i[WB_SDC_ID] ) ,
+        .wb_adr_i  ( wbs_adr_o[WB_SDC_ID][7:0] ) ,
+        .wb_sel_i  ( wbs_sel_o[WB_SDC_ID] ) ,
+        .wb_we_i   ( wbs_we_o [WB_SDC_ID] ) ,
+        .wb_cyc_i  ( wbs_cyc_o[WB_SDC_ID] ) ,
+        .wb_stb_i  ( wbs_stb_o[WB_SDC_ID] ) ,
+        .wb_ack_o  ( wbs_ack_i[WB_SDC_ID] ) ,
 
         // WISHBONE master
         .m_wb_dat_o    ,
@@ -97,7 +170,6 @@ module tb_top (
         .m_wb_ack_i    ,
         .m_wb_cti_o    ,
         .m_wb_bte_o    ,
-
         .sd_clk_i_pad (wb_clk),
         .sd_clk_o_pad (sd_clk_o),
 
@@ -136,52 +208,51 @@ module tb_top (
     assign sd_dat_dat_i = sd_dat_io;
 
     // ----------------------------------------------------------------
-    // Wishbone MUX
+    // SDC DMA Wishbone MUX
     // ----------------------------------------------------------------
     //
 
-    localparam DW = 32;
-    localparam AW = 32;
-    localparam SLV_N = 2;
+    localparam DMA_SLV_N = 4;
 
     // Slave IDs
-    localparam WB_RAM0_ID  = 0;
-    localparam WB_RAM1_ID  = 1;
-    localparam WB_FIFO0_ID = 2;
-    localparam WB_FIFO1_ID = 3;
+    localparam DMA_WB_RAM0_ID  = 0;
+    localparam DMA_WB_RAM1_ID  = 1;
+    localparam DMA_WB_FIFO0_ID = 2;
+    localparam DMA_WB_FIFO1_ID = 3;
 
-    localparam [SLV_N*AW-1:0] MUX_MATCH_ADDR = {
-        {  1'b1, {(AW-1){1'b0}}  },
-        {  1'b0, {(AW-1){1'b0}}  }
+    localparam [DMA_SLV_N*AW-1:0] DMA_MUX_MATCH_ADDR = {
+        {  2'd3, {(AW-2){1'b0}}  },
+        {  2'd2, {(AW-2){1'b0}}  },
+        {  2'd1, {(AW-2){1'b0}}  },
+        {  2'd0, {(AW-2){1'b0}}  }
     };
 
-    localparam [SLV_N*AW-1:0] MUX_MATCH_MASK = {
-        {  1'b1, {(AW-1){1'b0}}  },
-        {  1'b1, {(AW-1){1'b0}}  }
+    localparam [DMA_SLV_N*AW-1:0] DMA_MUX_MATCH_MASK = {
+        {  2'd3, {(AW-2){1'b0}}  },
+        {  2'd3, {(AW-2){1'b0}}  },
+        {  2'd3, {(AW-2){1'b0}}  },
+        {  2'd3, {(AW-2){1'b0}}  }
     };
-
-    wire [SLV_N-1:0][AW-1:0] mux_base_addr_export;
-    assign mux_base_addr_export = MUX_MATCH_ADDR;
 
     // Wishbone Slave interface
-    wire [SLV_N-1:0][AW-1:0]  wbs_adr_o ;
-    wire [SLV_N-1:0][DW-1:0]  wbs_dat_o ;
-    wire [SLV_N-1:0][4-1:0]   wbs_sel_o ;
-    wire [SLV_N-1:0]          wbs_we_o  ;
-    wire [SLV_N-1:0]          wbs_cyc_o ;
-    wire [SLV_N-1:0]          wbs_stb_o ;
-    wire [SLV_N-1:0][DW-1:0]  wbs_dat_i ;
-    wire [SLV_N-1:0]          wbs_ack_i ;
-    wire [SLV_N-1:0][2:0]     wbs_cti_o ;
-    wire [SLV_N-1:0][1:0]     wbs_bte_o ;
+    wire [DMA_SLV_N-1:0][AW-1:0]  wbs_dma_adr_o ;
+    wire [DMA_SLV_N-1:0][DW-1:0]  wbs_dma_dat_o ;
+    wire [DMA_SLV_N-1:0][4-1:0]   wbs_dma_sel_o ;
+    wire [DMA_SLV_N-1:0]          wbs_dma_we_o  ;
+    wire [DMA_SLV_N-1:0]          wbs_dma_cyc_o ;
+    wire [DMA_SLV_N-1:0]          wbs_dma_stb_o ;
+    wire [DMA_SLV_N-1:0][DW-1:0]  wbs_dma_dat_i ;
+    wire [DMA_SLV_N-1:0]          wbs_dma_ack_i ;
+    wire [DMA_SLV_N-1:0][2:0]     wbs_dma_cti_o ;
+    wire [DMA_SLV_N-1:0][1:0]     wbs_dma_bte_o ;
 
     wb_mux #(
-        .dw         ( DW             ),
-        .aw         ( AW             ),
-        .num_slaves ( SLV_N          ),
-        .MATCH_ADDR ( MUX_MATCH_ADDR ),
-        .MATCH_MASK ( MUX_MATCH_MASK )
-    ) mux (
+        .dw         ( DW                 ),
+        .aw         ( AW                 ),
+        .num_slaves ( DMA_SLV_N          ),
+        .MATCH_ADDR ( DMA_MUX_MATCH_ADDR ),
+        .MATCH_MASK ( DMA_MUX_MATCH_MASK )
+    ) dma_mux (
         .wb_clk_i   ( wb_clk     ) ,
         .wb_rst_i   ( wb_rst     ) ,
         // Master interface
@@ -198,16 +269,16 @@ module tb_top (
         .wbm_err_o  (            ) ,
         .wbm_rty_o  (            ) ,
         // Slave interfaces
-        .wbs_adr_o                 ,
-        .wbs_dat_o                 ,
-        .wbs_sel_o                 ,
-        .wbs_we_o                  ,
-        .wbs_cyc_o                 ,
-        .wbs_stb_o                 ,
-        .wbs_dat_i                 ,
-        .wbs_ack_i                 ,
-        .wbs_cti_o                 ,
-        .wbs_bte_o                 ,
+        .wbs_adr_o  ( wbs_dma_adr_o ) ,
+        .wbs_dat_o  ( wbs_dma_dat_o ) ,
+        .wbs_sel_o  ( wbs_dma_sel_o ) ,
+        .wbs_we_o   ( wbs_dma_we_o  ) ,
+        .wbs_cyc_o  ( wbs_dma_cyc_o ) ,
+        .wbs_stb_o  ( wbs_dma_stb_o ) ,
+        .wbs_dat_i  ( wbs_dma_dat_i ) ,
+        .wbs_ack_i  ( wbs_dma_ack_i ) ,
+        .wbs_cti_o  ( wbs_dma_cti_o ) ,
+        .wbs_bte_o  ( wbs_dma_bte_o ) ,
         .wbs_err_i ( '0          ) ,
         .wbs_rty_i ( '0          )
     );
@@ -228,16 +299,16 @@ module tb_top (
      	.wb_clk_i ( wb_clk ),
       	.wb_rst_i ( wb_rst ),
 
-        .wb_adr_i ( wbs_adr_o [WB_RAM0_ID][WB_RAM0_AW-1:0] ),
-        .wb_dat_i ( wbs_dat_o [WB_RAM0_ID] ),
-        .wb_sel_i ( wbs_sel_o [WB_RAM0_ID] ),
-     	.wb_we_i  ( wbs_we_o  [WB_RAM0_ID] ),
-        .wb_bte_i ( wbs_bte_o [WB_RAM0_ID] ),
-        .wb_cti_i ( wbs_cti_o [WB_RAM0_ID] ),
-        .wb_cyc_i ( wbs_cyc_o [WB_RAM0_ID] ),
-        .wb_stb_i ( wbs_stb_o [WB_RAM0_ID] ),
-        .wb_ack_o ( wbs_ack_i [WB_RAM0_ID] ),
-        .wb_dat_o ( wbs_dat_i [WB_RAM0_ID] ),
+        .wb_adr_i ( wbs_dma_adr_o [DMA_WB_RAM0_ID][WB_RAM0_AW-1:0] ),
+        .wb_dat_i ( wbs_dma_dat_o [DMA_WB_RAM0_ID] ),
+        .wb_sel_i ( wbs_dma_sel_o [DMA_WB_RAM0_ID] ),
+     	.wb_we_i  ( wbs_dma_we_o  [DMA_WB_RAM0_ID] ),
+        .wb_bte_i ( wbs_dma_bte_o [DMA_WB_RAM0_ID] ),
+        .wb_cti_i ( wbs_dma_cti_o [DMA_WB_RAM0_ID] ),
+        .wb_cyc_i ( wbs_dma_cyc_o [DMA_WB_RAM0_ID] ),
+        .wb_stb_i ( wbs_dma_stb_o [DMA_WB_RAM0_ID] ),
+        .wb_ack_o ( wbs_dma_ack_i [DMA_WB_RAM0_ID] ),
+        .wb_dat_o ( wbs_dma_dat_i [DMA_WB_RAM0_ID] ),
         .wb_err_o ()
     );
 
@@ -257,17 +328,73 @@ module tb_top (
      	.wb_clk_i ( wb_clk ),
       	.wb_rst_i ( wb_rst ),
 
-        .wb_adr_i ( wbs_adr_o [WB_RAM1_ID][WB_RAM0_AW-1:0] ),
-        .wb_dat_i ( wbs_dat_o [WB_RAM1_ID] ),
-        .wb_sel_i ( wbs_sel_o [WB_RAM1_ID] ),
-     	.wb_we_i  ( wbs_we_o  [WB_RAM1_ID] ),
-        .wb_bte_i ( wbs_bte_o [WB_RAM1_ID] ),
-        .wb_cti_i ( wbs_cti_o [WB_RAM1_ID] ),
-        .wb_cyc_i ( wbs_cyc_o [WB_RAM1_ID] ),
-        .wb_stb_i ( wbs_stb_o [WB_RAM1_ID] ),
-        .wb_ack_o ( wbs_ack_i [WB_RAM1_ID] ),
-        .wb_dat_o ( wbs_dat_i [WB_RAM1_ID] ),
+        .wb_adr_i ( wbs_dma_adr_o [DMA_WB_RAM1_ID][WB_RAM0_AW-1:0] ),
+        .wb_dat_i ( wbs_dma_dat_o [DMA_WB_RAM1_ID] ),
+        .wb_sel_i ( wbs_dma_sel_o [DMA_WB_RAM1_ID] ),
+     	.wb_we_i  ( wbs_dma_we_o  [DMA_WB_RAM1_ID] ),
+        .wb_bte_i ( wbs_dma_bte_o [DMA_WB_RAM1_ID] ),
+        .wb_cti_i ( wbs_dma_cti_o [DMA_WB_RAM1_ID] ),
+        .wb_cyc_i ( wbs_dma_cyc_o [DMA_WB_RAM1_ID] ),
+        .wb_stb_i ( wbs_dma_stb_o [DMA_WB_RAM1_ID] ),
+        .wb_ack_o ( wbs_dma_ack_i [DMA_WB_RAM1_ID] ),
+        .wb_dat_o ( wbs_dma_dat_i [DMA_WB_RAM1_ID] ),
         .wb_err_o ()
+    );
+
+    // ----------------------------------------------------------------
+    // WB FIFO 0, write from SDC to FIFO
+    // ----------------------------------------------------------------
+    //
+
+    wb_fifo #(.ENABLE_VCD(0)) fifo0 (
+        .clk_i    ( wb_clk ) ,
+        .rst_i    ( wb_rst ) ,
+
+        .wr_dat_i ( wbs_dma_dat_o [DMA_WB_FIFO0_ID] ),
+        .wr_dat_o ( wbs_dma_dat_i [DMA_WB_FIFO0_ID] ),
+        .wr_adr_i ( wbs_dma_adr_o [DMA_WB_FIFO0_ID] ),
+        .wr_sel_i ( wbs_dma_sel_o [DMA_WB_FIFO0_ID] ),
+        .wr_we_i  ( wbs_dma_we_o  [DMA_WB_FIFO0_ID] ),
+        .wr_cyc_i ( wbs_dma_cyc_o [DMA_WB_FIFO0_ID] ),
+        .wr_stb_i ( wbs_dma_stb_o [DMA_WB_FIFO0_ID] ),
+        .wr_ack_o ( wbs_dma_ack_i [DMA_WB_FIFO0_ID] ),
+
+        .rd_dat_i ( wbs_dat_o [WB_FIFO0_ID] ),
+        .rd_dat_o ( wbs_dat_i [WB_FIFO0_ID] ),
+        .rd_adr_i ( wbs_adr_o [WB_FIFO0_ID] ),
+        .rd_sel_i ( wbs_sel_o [WB_FIFO0_ID] ),
+        .rd_we_i  ( wbs_we_o  [WB_FIFO0_ID] ),
+        .rd_cyc_i ( wbs_cyc_o [WB_FIFO0_ID] ),
+        .rd_stb_i ( wbs_stb_o [WB_FIFO0_ID] ),
+        .rd_ack_o ( wbs_ack_i [WB_FIFO0_ID] )
+    );
+
+    // ----------------------------------------------------------------
+    // WB FIFO 1, read from SDC to FIFO
+    // ----------------------------------------------------------------
+    //
+
+    wb_fifo #(.ENABLE_VCD(0)) fifo1 (
+        .clk_i    ( wb_clk ) ,
+        .rst_i    ( wb_rst ) ,
+
+        .wr_dat_i ( wbs_dat_o [WB_FIFO1_ID] ),
+        .wr_dat_o ( wbs_dat_i [WB_FIFO1_ID] ),
+        .wr_adr_i ( wbs_adr_o [WB_FIFO1_ID] ),
+        .wr_sel_i ( wbs_sel_o [WB_FIFO1_ID] ),
+        .wr_we_i  ( wbs_we_o  [WB_FIFO1_ID] ),
+        .wr_cyc_i ( wbs_cyc_o [WB_FIFO1_ID] ),
+        .wr_stb_i ( wbs_stb_o [WB_FIFO1_ID] ),
+        .wr_ack_o ( wbs_ack_i [WB_FIFO1_ID] ),
+
+        .rd_dat_o ( wbs_dma_dat_o [DMA_WB_FIFO1_ID] ),
+        .rd_dat_i ( wbs_dma_dat_i [DMA_WB_FIFO1_ID] ),
+        .rd_adr_i ( wbs_dma_adr_o [DMA_WB_FIFO1_ID] ),
+        .rd_sel_i ( wbs_dma_sel_o [DMA_WB_FIFO1_ID] ),
+        .rd_we_i  ( wbs_dma_we_o  [DMA_WB_FIFO1_ID] ),
+        .rd_cyc_i ( wbs_dma_cyc_o [DMA_WB_FIFO1_ID] ),
+        .rd_stb_i ( wbs_dma_stb_o [DMA_WB_FIFO1_ID] ),
+        .rd_ack_o ( wbs_dma_ack_i [DMA_WB_FIFO1_ID] )
     );
 
 endmodule
