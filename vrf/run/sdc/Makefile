@@ -1,7 +1,7 @@
 
-export PRJ_ROOT = $(PWD)/../..
+export PRJ_ROOT = $(PWD)/../../..
 
-export PYTHONPATH := $(PWD)/../test:$(PYTHONPATH)
+export PYTHONPATH := $(PRJ_ROOT)/vrf/test:$(PYTHONPATH)
 
 SIM  ?= icarus
 TOPLEVEL_LANG ?= verilog
@@ -12,8 +12,9 @@ ifeq ($(SIM), questa)
 SIM_ARGS += -onfinish stop
 endif
 
-# include ../list/afifo.mk
-include ../list/dut.mk
-include ../list/tb.mk
+include $(PRJ_ROOT)/vrf/list/dut.mk
+include $(PRJ_ROOT)/vrf/list/wb.mk
+include $(PRJ_ROOT)/vrf/list/fifo.mk
+include $(PRJ_ROOT)/vrf/list/tb.mk
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
