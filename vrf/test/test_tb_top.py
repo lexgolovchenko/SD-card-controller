@@ -341,3 +341,42 @@ async def read_to_fifo_from_sd_test(dut):
 
     for _ in range(10):
         await read_to_fifo_from_sd(dut, wbm, 1, 4)
+
+
+async def write_data_to_wb_fifo(wbm: WishboneMaster, wdata: TestData):
+    data_adr = WB_BASE_ADDR[WbId.FIFO1] | FifoAddr.DATA
+    for blk32 in wdata.data32:
+        for val32 in blk32:
+            await wb_write(wbm, data_adr, val32)
+
+
+async def write_from_fifo_to_sd_direct(dut, wbm):
+    # Generate test data
+    wrdat = TestData(4, 4)
+    wrdat.randomize()
+
+    await write_data_to_wb_fifo(wbm, wrdat)
+
+    # Write data to SD
+    sd_rddat8 = []
+    for _ in range(4):
+        sd_start_adr = get_sd_start_addr(dut.sd_model, wrdat.block_num)
+        await sdc_write_blocks(wbm, sd_start_adr, WB_DMA_BASE_ADDR[WbDmaId.FIFO1], 1)
+        await Timer(1, units="us")
+        rddat8 = sd_model_backdoor_read(dut.sd_model, sd_start_adr, 1)
+        sd_rddat8.append(rddat8[0])
+
+    # Compare result
+    assert compare_data(wrdat.data8, sd_rddat8)
+
+
+@cocotb.test()
+async def write_from_fifo_to_sd_test(dut):
+    await wait_reset_release(dut)
+    await Timer(1, units="us")
+
+    wbm = wishbone_master_init(dut)
+    await sdc_initial_core_setup(wbm)
+    await sdc_setup_card_to_transfer(wbm)
+
+    await write_from_fifo_to_sd_direct(dut, wbm)

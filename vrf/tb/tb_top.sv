@@ -387,8 +387,8 @@ module tb_top (
         .wr_stb_i ( wbs_stb_o [WB_FIFO1_ID] ),
         .wr_ack_o ( wbs_ack_i [WB_FIFO1_ID] ),
 
-        .rd_dat_o ( wbs_dma_dat_o [DMA_WB_FIFO1_ID] ),
-        .rd_dat_i ( wbs_dma_dat_i [DMA_WB_FIFO1_ID] ),
+        .rd_dat_o ( wbs_dma_dat_i [DMA_WB_FIFO1_ID] ),
+        .rd_dat_i ( wbs_dma_dat_o [DMA_WB_FIFO1_ID] ),
         .rd_adr_i ( wbs_dma_adr_o [DMA_WB_FIFO1_ID] ),
         .rd_sel_i ( wbs_dma_sel_o [DMA_WB_FIFO1_ID] ),
         .rd_we_i  ( wbs_dma_we_o  [DMA_WB_FIFO1_ID] ),
