@@ -1,7 +1,7 @@
 
 import cocotb
 import cocotb.clock
-from cocotb.triggers import RisingEdge, Timer
+from cocotb.triggers import Timer, Combine
 from cocotbext.wishbone.driver import WishboneMaster, WBOp
 from random import randint
 from enum import IntEnum
@@ -133,3 +133,79 @@ async def wb_fifo_write_full_read_empty_test(dut):
     wbm_rd.log.info("RD status : count={:d} empty={:d}".format(rd_stat >> 1, rd_stat & 0x1))
 
     assert compare_data(wr_data, rd_data)
+
+#
+# Concurent and random write-read test
+#
+
+async def get_wb_fifo_write_stat(wbm):
+    stat = await wb_read(wbm, WrFifoAddr.STATUS)
+    count = stat >> 1
+    full = stat & 1
+    return count, full
+
+
+async def get_wb_fifo_read_stat(wbm):
+    stat = await wb_read(wbm, RdFifoAddr.STATUS)
+    count = stat >> 1
+    empty = stat & 1
+    return count, empty
+
+
+async def wb_fifo_write_thread(dut, data_amount, data_buf):
+    wbm_wr = wb_master_write_port(dut)
+    fifo_size = get_fifo_length(dut)
+    data_rest = data_amount
+
+    await Timer(randint(1, 1000) * CLOCK_PERIOD_NS, "ns")
+
+    while data_rest != 0:
+        count, full = await get_wb_fifo_write_stat(wbm_wr)
+        if full:
+            await Timer(randint(1, 1000) * CLOCK_PERIOD_NS, "ns")
+        else:
+            wr_amount = randint(1, (fifo_size - count))
+            if wr_amount > data_rest:
+                wr_amount = data_rest
+            wbm_wr.log.info("Write {:d} words to fifo".format(wr_amount))
+            for _ in range(wr_amount):
+                data_buf.append(randint(0, 2 ** 32 - 1))
+                await wb_write(wbm_wr, WrFifoAddr.DATA, data_buf[-1])
+            data_rest -= wr_amount
+
+
+async def wb_fifo_read_thread(dut, data_amount, data_buf):
+    wbm_rd = wb_master_read_port(dut)
+    data_rest = data_amount
+
+    await Timer(randint(1, 1000) * CLOCK_PERIOD_NS, "ns")
+
+    while data_rest != 0:
+        count, empty = await get_wb_fifo_read_stat(wbm_rd)
+        if empty:
+            await Timer(randint(1, 1000) * CLOCK_PERIOD_NS, "ns")
+        else:
+            rd_amount = randint(1, count)
+            wbm_rd.log.info("Read {:d} words from fifo".format(rd_amount))
+            for _ in range(rd_amount):
+                data_buf.append(await wb_read(wbm_rd, RdFifoAddr.DATA))
+            data_rest -= rd_amount
+
+
+@cocotb.test()
+async def wb_fifo_random_test(dut):
+    await clock_and_reset(dut)
+
+    fifo_size = get_fifo_length(dut)
+
+    for _ in range(10):
+        transfer_len = randint(1 * fifo_size, 5 * fifo_size)
+        dut._log.info("Transfer {:0d} words through fifo".format(transfer_len))
+        await Timer(CLOCK_PERIOD_NS, "ns")
+        wr_data = []
+        rd_data = []
+        wr_trhead = cocotb.start_soon(wb_fifo_write_thread(dut, transfer_len, wr_data))
+        rd_trhead = cocotb.start_soon(wb_fifo_read_thread(dut, transfer_len, rd_data))
+        await Combine(wr_trhead, rd_trhead)
+        dut._log.info("Done. Compare data")
+        assert compare_data(wr_data, rd_data)
