@@ -47,6 +47,8 @@
 ////                                                              ////
 //////////////////////////////////////////////////////////////////////
 
+`include "sd_defines.h"
+
 module sd_fifo_filler(
            input wb_clk,
            input rst,
@@ -74,8 +76,35 @@ module sd_fifo_filler(
            output wb_empty_o,
 
            input start_tx_i,
-           input start_rx_i
-       );
+           input start_rx_i,
+
+           input [`BLKSIZE_W+`BLKCNT_W-1:0] xfersize_i,
+
+           output wire wb_finish_o
+);
+
+//
+// Data transfer counter
+//
+
+localparam WB_CNT_W = (`BLKSIZE_W+`BLKCNT_W);
+
+reg [`BLKSIZE_W+`BLKCNT_W-1:0] wb_cnt;
+wire tx_ena;
+
+always @(posedge wb_clk or posedge rst) begin
+    if (rst)
+        wb_cnt <= {WB_CNT_W{1'b0}};
+    else begin
+        if (start_tx_i || start_rx_i)
+            wb_cnt <= (xfersize_i >> 2);
+        else if (wbm_ack_i && (|wb_cnt))
+            wb_cnt <= wb_cnt - 1'b1;
+    end
+end
+
+assign wb_ena = (|wb_cnt);
+assign wb_finish_o = !(|wb_cnt);
 
 `define FIFO_MEM_ADR_SIZE 4
 `define MEM_OFFSET 4
@@ -89,9 +118,9 @@ assign fifo_rd = wbm_cyc_o & wbm_ack_i;
 // assign reset_fifo = !en_rx_i & !en_tx_i;
 assign reset_fifo = start_tx_i || start_rx_i;
 
-assign wbm_we_o = en_rx_i & !wb_empty_o;
-assign wbm_cyc_o = en_rx_i ? en_rx_i & !wb_empty_o : en_tx_i & !wb_full_o;
-assign wbm_stb_o = en_rx_i ? wbm_cyc_o & fifo_rd_ack : wbm_cyc_o;
+assign wbm_we_o  = (en_rx_i & !wb_empty_o);
+assign wbm_cyc_o = wb_ena & (en_rx_i ? en_rx_i & !wb_empty_o : en_tx_i & !wb_full_o);
+assign wbm_stb_o = wb_ena & (en_rx_i ? wbm_cyc_o & fifo_rd_ack : wbm_cyc_o);
 
 generic_fifo_dc_gray #(
     .dw(32),

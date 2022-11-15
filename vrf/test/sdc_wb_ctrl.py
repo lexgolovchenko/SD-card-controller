@@ -127,21 +127,27 @@ async def sdc_reg_read(wbm: WishboneMaster, adr: int) -> int:
     return result[0].datrd
 
 
-async def sdc_initial_core_setup(wbm):
+async def sdc_initial_core_setup(wbm, divider=0):
+    wbm.log.info("Set clock divider value {:d}".format(divider))
     # Reset core
     await sdc_reg_write(wbm, SdcRegs.RESET, 1)
     # Setup timeouts
-    await sdc_reg_write(wbm, SdcRegs.CMD_TIMEOUT, 0xFFFF)
-    await sdc_reg_write(wbm, SdcRegs.DATA_TIMEOUT, 0xFFFF)
+    await sdc_reg_write(wbm, SdcRegs.CMD_TIMEOUT, 0x3FFFF)
+    await sdc_reg_write(wbm, SdcRegs.DATA_TIMEOUT, 0x3FFFF)
     # Setup clock divider
-    await sdc_reg_write(wbm, SdcRegs.CLOCK_DIVIDER, 2)
-    # Start core
-    await sdc_reg_write(wbm, SdcRegs.RESET, 0)
+    await sdc_reg_write(wbm, SdcRegs.CLOCK_DIVIDER, divider)
     # Enable all interrupt
     await sdc_reg_write(wbm, SdcRegs.CMD_EVENT_ENABLE, 0x1f)
     await sdc_reg_write(wbm, SdcRegs.DATA_EVENT_ENABLE, 0x1f)
     # 4-bit bus
     await sdc_reg_write(wbm, SdcRegs.CONTROL, 1)
+    # Start core
+    await sdc_reg_write(wbm, SdcRegs.RESET, 0)
+    await Timer(1, units="us")
+
+
+async def sdc_set_sd_clk_divider(wbm, divider):
+    await sdc_reg_write(wbm, SdcRegs.CLOCK_DIVIDER, divider)
 
 
 async def sdc_send_cmd(wbm: WishboneMaster, cmd: int, arg: int):

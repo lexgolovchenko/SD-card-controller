@@ -69,7 +69,8 @@ module sd_data_master (
            input crc_ok_i,
            //status output
            output reg [`INT_DATA_SIZE-1:0] int_status_o,
-           input int_status_rst_i
+           input int_status_rst_i,
+           input wb_finish_i
        );
 
 reg [`DATA_TIMEOUT_W-1:0] timeout_reg;
@@ -176,7 +177,7 @@ begin
                 d_write_o <= 0;
                 watchdog <= watchdog + `DATA_TIMEOUT_W'd1;
                 if (tx_cycle) begin
-                    if (tx_fifo_empty_i) begin
+                    if (tx_fifo_empty_i && !wb_finish_i) begin
                         if (!trans_done) begin
                             int_status_o[`INT_DATA_CFE] <= 1;
                             int_status_o[`INT_DATA_EI] <= 1;

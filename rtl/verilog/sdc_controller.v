@@ -204,6 +204,8 @@ wire [`BLKCNT_W-1:0] block_count_reg_sd_clk;
 wire [1:0] dma_addr_reg_sd_clk;
 wire [7:0] clock_divider_reg_sd_clk;
 
+wire wb_finish;
+
 sd_clock_divider clock_divider0(
     .CLK (sd_clk_i_pad),
     .DIVIDER (clock_divider_reg_sd_clk),
@@ -271,7 +273,8 @@ sd_data_master sd_data_master0(
     .xfr_complete_i   (!data_busy),
     .crc_ok_i         (data_crc_ok),
     .int_status_o     (data_int_status_reg_sd_clk),
-    .int_status_rst_i (data_int_rst_sd_clk)
+    .int_status_rst_i (data_int_rst_sd_clk),
+    .wb_finish_i      (wb_finish)
     );
 
 sd_data_serial_host sd_data_serial_host0(
@@ -317,8 +320,10 @@ sd_fifo_filler sd_fifo_filler0(
     .wb_empty_o   (),
     .wb_full_o    (tx_fifo_full),
     .start_tx_i       (data_start_tx),
-    .start_rx_i       (data_start_rx)
-    );
+    .start_rx_i       (data_start_rx),
+    .xfersize_i       (xfersize),
+    .wb_finish_o      (wb_finish)
+);
 
 assign xfersize = (block_size_reg_wb_clk + 1'b1) * (block_count_reg_wb_clk + 1'b1);
 sd_wb_sel_ctrl sd_wb_sel_ctrl0(

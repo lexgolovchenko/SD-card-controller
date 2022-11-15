@@ -229,11 +229,16 @@ async def write_from_ram_to_sd_test(dut):
     await Timer(1, units="us")
 
     wbm = wishbone_master_init(dut)
-    await sdc_initial_core_setup(wbm)
+    await sdc_initial_core_setup(wbm, divider=randint(0,6))
     await sdc_setup_card_to_transfer(wbm)
 
-    for _ in range(5):
+    for i in range(5):
+        divider = 0 if (i % 2 == 1) else randint(1, 5)
+        await sdc_set_sd_clk_divider(wbm, divider)
         await write_from_ram_to_sd(dut, wbm, WbDmaId.RAM0, 1, 10)
+
+        divider = 0 if (i % 2 == 0) else randint(1, 5)
+        await sdc_set_sd_clk_divider(wbm, divider)
         await write_from_ram_to_sd(dut, wbm, WbDmaId.RAM1, 1, 10)
 
     dut._log.info("Done!")
@@ -245,11 +250,16 @@ async def read_to_ram_from_sd_test(dut):
     await Timer(1, units="us")
 
     wbm = wishbone_master_init(dut)
-    await sdc_initial_core_setup(wbm)
+    await sdc_initial_core_setup(wbm, divider=randint(0,6))
     await sdc_setup_card_to_transfer(wbm)
 
-    for _ in range(5):
+    for i in range(5):
+        divider = 0 if (i % 2 == 1) else randint(1, 5)
+        await sdc_set_sd_clk_divider(wbm, divider)
         await read_to_ram_from_sd(dut, wbm, WbDmaId.RAM0, 1, 10)
+
+        divider = 0 if (i % 2 == 0) else randint(1, 5)
+        await sdc_set_sd_clk_divider(wbm, divider)
         await read_to_ram_from_sd(dut, wbm, WbDmaId.RAM1, 1, 10)
 
     dut._log.info("Done!")
@@ -259,6 +269,15 @@ async def read_to_ram_from_sd_test(dut):
 # Testcases with fifo
 # ------------------------------------------------------------------
 #
+
+def get_fifo_size_in_blocks(dut, fifo_idx):
+    if fifo_idx == 0:
+        return (2 ** int(dut.fifo0.FIFO_ADR_W)) // (BLOCK_SIZE // 4)
+    elif fifo_idx == 1:
+        return (2 ** int(dut.fifo1.FIFO_ADR_W)) // (BLOCK_SIZE // 4)
+    else:
+        raise ValueError("Fifo Index must be 0 or 1")
+
 
 class WbId(IntEnum):
     SDC   = 0
@@ -304,6 +323,12 @@ async def read_data_from_wb_fifo(wbm, block_num):
             blk32.append(val32)
         data32.append(blk32)
 
+    rd_stat = await wb_read(wbm, stat_adr)
+    count = rd_stat >> 1
+    empty = rd_stat & 1
+    assert count == 0
+    assert empty == 1
+
     return data32
 
 
@@ -334,13 +359,16 @@ async def read_to_fifo_from_sd(dut, wbm, blk_min=1, blk_max=1):
 async def read_to_fifo_from_sd_test(dut):
     await wait_reset_release(dut)
     await Timer(1, units="us")
+    blocks_max = get_fifo_size_in_blocks(dut, 0)
 
     wbm = wishbone_master_init(dut)
-    await sdc_initial_core_setup(wbm)
+    await sdc_initial_core_setup(wbm, divider=randint(0, 6))
     await sdc_setup_card_to_transfer(wbm)
 
-    for _ in range(10):
-        await read_to_fifo_from_sd(dut, wbm, 1, 4)
+    for i in range(10):
+        divider = 0 if (i % 2) else randint(1, 5)
+        await sdc_set_sd_clk_divider(wbm, divider)
+        await read_to_fifo_from_sd(dut, wbm, 1, blocks_max)
 
 
 async def write_data_to_wb_fifo(wbm: WishboneMaster, wdata: TestData):
@@ -352,19 +380,49 @@ async def write_data_to_wb_fifo(wbm: WishboneMaster, wdata: TestData):
 
 async def write_from_fifo_to_sd_direct(dut, wbm):
     # Generate test data
-    wrdat = TestData(4, 4)
+    blocks_max = get_fifo_size_in_blocks(dut, 1)
+    wrdat = TestData(blocks_max, blocks_max)
     wrdat.randomize()
 
+    dut._log.info("Write {:0d} blocks to WB FIFO1".format(wrdat.block_num))
     await write_data_to_wb_fifo(wbm, wrdat)
 
-    # Write data to SD
+    # Write data to SD by 1 block
     sd_rddat8 = []
-    for _ in range(4):
-        sd_start_adr = get_sd_start_addr(dut.sd_model, wrdat.block_num)
-        await sdc_write_blocks(wbm, sd_start_adr, WB_DMA_BASE_ADDR[WbDmaId.FIFO1], 1)
+    blk_rest = blocks_max
+    while blk_rest != 0:
+        blk_num = randint(1, 2)
+        if blk_num > blk_rest:
+            blk_num = blk_rest
+        dut._log.info("Write {:0d} blocks to SD card from FIFO1".format(blk_num))
+        sd_start_adr = get_sd_start_addr(dut.sd_model, blk_num)
+        await sdc_write_blocks(wbm, sd_start_adr, WB_DMA_BASE_ADDR[WbDmaId.FIFO1], blk_num)
         await Timer(1, units="us")
-        rddat8 = sd_model_backdoor_read(dut.sd_model, sd_start_adr, 1)
-        sd_rddat8.append(rddat8[0])
+        rddat8 = sd_model_backdoor_read(dut.sd_model, sd_start_adr, blk_num)
+        for blk in rddat8:
+            sd_rddat8.append(blk)
+
+        blk_rest -= blk_num
+
+    # Compare result
+    assert compare_data(wrdat.data8, sd_rddat8)
+
+
+async def write_from_fifo_to_sd_random(dut, wbm):
+    # Generate test data
+    blocks_max = get_fifo_size_in_blocks(dut, 1)
+    wrdat = TestData(1, blocks_max)
+    wrdat.randomize()
+
+    dut._log.info("Write {:0d} blocks to WB FIFO1".format(wrdat.block_num))
+    await write_data_to_wb_fifo(wbm, wrdat)
+
+    blk_num = wrdat.block_num
+    dut._log.info("Write {:0d} blocks to SD card from FIFO1".format(blk_num))
+    sd_start_adr = get_sd_start_addr(dut.sd_model, blk_num)
+    await sdc_write_blocks(wbm, sd_start_adr, WB_DMA_BASE_ADDR[WbDmaId.FIFO1], blk_num)
+    await Timer(1, units="us")
+    sd_rddat8 = sd_model_backdoor_read(dut.sd_model, sd_start_adr, blk_num)
 
     # Compare result
     assert compare_data(wrdat.data8, sd_rddat8)
@@ -374,9 +432,20 @@ async def write_from_fifo_to_sd_direct(dut, wbm):
 async def write_from_fifo_to_sd_test(dut):
     await wait_reset_release(dut)
     await Timer(1, units="us")
+    blocks_max = get_fifo_size_in_blocks(dut, 1)
 
     wbm = wishbone_master_init(dut)
-    await sdc_initial_core_setup(wbm)
+    await sdc_initial_core_setup(wbm, divider=randint(0, 6))
     await sdc_setup_card_to_transfer(wbm)
 
-    await write_from_fifo_to_sd_direct(dut, wbm)
+    for i in range(10):
+        divider = 0 if (i % 2) else randint(1, 5)
+        await sdc_set_sd_clk_divider(wbm, divider)
+        await write_from_fifo_to_sd_direct(dut, wbm)
+
+    for i in range(10):
+        divider = 0 if (i % 2) else randint(1, 5)
+        await sdc_set_sd_clk_divider(wbm, divider)
+        await write_from_fifo_to_sd_random(dut, wbm)
+
+    await Timer(10, units="us")

@@ -26,7 +26,7 @@ module wb_fifo #(
     output wire        rd_ack_o
 );
 
-    localparam FIFO_ADR_W = 9;
+    localparam FIFO_ADR_W = 10;
 
     localparam DW = 32;
     localparam AW = 32;
