@@ -1,6 +1,8 @@
 
 `default_nettype none
 
+`timescale 1ns/1ns
+
 module tb_top (
     // WISHBONE slave
     input  wire [31:0] wb_dat_i ,
@@ -32,12 +34,25 @@ module tb_top (
     // ----------------------------------------------------------------
     //
 
-    localparam time T_CLK_NS = 10ns;
+    int unsigned T_CLK_NS    = 20ns;
+    int unsigned T_SD_CLK_SRC_NS = 10ns;
 
     logic wb_clk = 1'b0;
+    logic sd_clk_src = 1'b0;
+
+    always  #((T_CLK_NS / 2) * 1ns) wb_clk <= ~wb_clk;
+
+    initial begin
+        #($urandom_range(1, T_CLK_NS) * 1ns);
+        forever begin
+            #((T_SD_CLK_SRC_NS / 2) * 1ns)
+            sd_clk_src <= ~sd_clk_src;
+        end
+    end
+
+    logic wb_rst_raw = 1'b0;
     logic wb_rst = 1'b1;
 
-    always  #(T_CLK_NS / 2) wb_clk = ~wb_clk;
     initial #(100 * T_CLK_NS) wb_rst = 1'b0;
 
     // ----------------------------------------------------------------
@@ -170,7 +185,7 @@ module tb_top (
         .m_wb_ack_i    ,
         .m_wb_cti_o    ,
         .m_wb_bte_o    ,
-        .sd_clk_i_pad (wb_clk),
+        .sd_clk_i_pad (sd_clk_src),
         .sd_clk_o_pad (sd_clk_o),
 
         // SD Command interface - not used

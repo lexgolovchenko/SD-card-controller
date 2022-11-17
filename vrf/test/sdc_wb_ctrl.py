@@ -143,7 +143,7 @@ async def sdc_initial_core_setup(wbm, divider=0):
     await sdc_reg_write(wbm, SdcRegs.CONTROL, 1)
     # Start core
     await sdc_reg_write(wbm, SdcRegs.RESET, 0)
-    await Timer(1, units="us")
+    await Timer(20, units="us")
 
 
 async def sdc_set_sd_clk_divider(wbm, divider):

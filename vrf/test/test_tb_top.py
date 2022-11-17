@@ -13,6 +13,19 @@ from test_data import TestData
 from typing import List
 import cocotb.handle
 
+
+# @cocotb.test()
+# async def change_clock_test(dut):
+#     await Timer(5, units="us")
+#     dut.T_CLK_NS.value = 20
+#     await Timer(5, units="us")
+#     dut.T_CLK_NS.value = 100
+#     await Timer(5, units="us")
+#     dut.T_CLK_NS.value = 2
+#     await Timer(5, units="us")
+#     dut.T_CLK_NS.value = 10
+#     await Timer(5, units="us")
+
 async def wait_reset_release(dut):
     dut.wb_rst._log.info("Waiting reset release...")
     if dut.wb_rst == 1:
@@ -162,7 +175,7 @@ async def write_from_ram_to_sd(dut, wbm, ram_idx, blk_min=1, blk_max=1):
     wrdat.randomize()
 
     # Info
-    dut._log.info("Write {:0d} blocks to SD card to RAM{:0d}".format(wrdat.block_num, ram_idx))
+    dut._log.info("Write {:0d} blocks to SD card from RAM{:0d}".format(wrdat.block_num, ram_idx))
 
     # Write data to choosen RAM
     ram = dut.ram0 if (ram_idx == 0) else dut.ram1
@@ -229,17 +242,21 @@ async def write_from_ram_to_sd_test(dut):
     await Timer(1, units="us")
 
     wbm = wishbone_master_init(dut)
-    await sdc_initial_core_setup(wbm, divider=randint(0,6))
+    await sdc_initial_core_setup(wbm, divider=randint(0, 6))
     await sdc_setup_card_to_transfer(wbm)
 
-    for i in range(5):
-        divider = 0 if (i % 2 == 1) else randint(1, 5)
+    for i in range(10):
+        divider = 0 if (i % 2 == 1) else randint(1, 6)
         await sdc_set_sd_clk_divider(wbm, divider)
+        await Timer(20, units="us")
         await write_from_ram_to_sd(dut, wbm, WbDmaId.RAM0, 1, 10)
+        await Timer(20, units="us")
 
-        divider = 0 if (i % 2 == 0) else randint(1, 5)
+        divider = 0 if (i % 2 == 0) else randint(1, 6)
         await sdc_set_sd_clk_divider(wbm, divider)
+        await Timer(20, units="us")
         await write_from_ram_to_sd(dut, wbm, WbDmaId.RAM1, 1, 10)
+        await Timer(20, units="us")
 
     dut._log.info("Done!")
 
@@ -250,17 +267,21 @@ async def read_to_ram_from_sd_test(dut):
     await Timer(1, units="us")
 
     wbm = wishbone_master_init(dut)
-    await sdc_initial_core_setup(wbm, divider=randint(0,6))
+    await sdc_initial_core_setup(wbm, divider=randint(0, 6))
     await sdc_setup_card_to_transfer(wbm)
 
     for i in range(5):
-        divider = 0 if (i % 2 == 1) else randint(1, 5)
+        divider = 0 if (i % 2 == 1) else randint(1, 1)
         await sdc_set_sd_clk_divider(wbm, divider)
+        await Timer(20, units="us")
         await read_to_ram_from_sd(dut, wbm, WbDmaId.RAM0, 1, 10)
+        await Timer(20, units="us")
 
-        divider = 0 if (i % 2 == 0) else randint(1, 5)
+        divider = 0 if (i % 2 == 0) else randint(1, 3)
         await sdc_set_sd_clk_divider(wbm, divider)
+        await Timer(20, units="us")
         await read_to_ram_from_sd(dut, wbm, WbDmaId.RAM1, 1, 10)
+        await Timer(20, units="us")
 
     dut._log.info("Done!")
 
@@ -366,9 +387,11 @@ async def read_to_fifo_from_sd_test(dut):
     await sdc_setup_card_to_transfer(wbm)
 
     for i in range(10):
-        divider = 0 if (i % 2) else randint(1, 5)
+        divider = 0 if (i % 2) else randint(1, 6)
         await sdc_set_sd_clk_divider(wbm, divider)
+        await Timer(20, units="us")
         await read_to_fifo_from_sd(dut, wbm, 1, blocks_max)
+        await Timer(20, units="us")
 
 
 async def write_data_to_wb_fifo(wbm: WishboneMaster, wdata: TestData):
@@ -439,13 +462,17 @@ async def write_from_fifo_to_sd_test(dut):
     await sdc_setup_card_to_transfer(wbm)
 
     for i in range(10):
-        divider = 0 if (i % 2) else randint(1, 5)
+        divider = 0 if (i % 2) else randint(1, 6)
         await sdc_set_sd_clk_divider(wbm, divider)
+        await Timer(20, units="us")
         await write_from_fifo_to_sd_direct(dut, wbm)
+        await Timer(20, units="us")
 
     for i in range(10):
-        divider = 0 if (i % 2) else randint(1, 5)
+        divider = 0 if (i % 2) else randint(1, 6)
         await sdc_set_sd_clk_divider(wbm, divider)
+        await Timer(20, units="us")
         await write_from_fifo_to_sd_random(dut, wbm)
+        await Timer(20, units="us")
 
     await Timer(10, units="us")

@@ -90,13 +90,16 @@ module sd_fifo_filler(
 localparam WB_CNT_W = (`BLKSIZE_W+`BLKCNT_W);
 
 reg [`BLKSIZE_W+`BLKCNT_W-1:0] wb_cnt;
-wire tx_ena;
+wire wb_ena;
+wire wb_cnt_start;
+
+assign wb_cnt_start = start_tx_i || start_rx_i;
 
 always @(posedge wb_clk or posedge rst) begin
     if (rst)
         wb_cnt <= {WB_CNT_W{1'b0}};
     else begin
-        if (start_tx_i || start_rx_i)
+        if (wb_cnt_start)
             wb_cnt <= (xfersize_i >> 2);
         else if (wbm_ack_i && (|wb_cnt))
             wb_cnt <= wb_cnt - 1'b1;

@@ -158,8 +158,12 @@ wire data_crc_ok;
 wire rd_fifo;
 wire we_fifo;
 
-wire data_start_rx;
-wire data_start_tx;
+wire data_start_rx_sd0;
+wire data_start_tx_sd0;
+wire data_start_rx_sd;
+wire data_start_tx_sd;
+wire data_start_rx_wb;
+wire data_start_tx_wb;
 wire cmd_int_rst_wb_clk;
 wire cmd_int_rst_sd_clk;
 wire cmd_int_rst;
@@ -260,8 +264,8 @@ sd_data_master sd_data_master0(
     .sd_clk           (sd_clk_o),
     .rst              (wb_rst_i |
                        software_reset_reg_sd_clk[0]),
-    .start_tx_i       (data_start_tx),
-    .start_rx_i       (data_start_rx),
+    .start_tx_i       (data_start_tx_sd),
+    .start_rx_i       (data_start_rx_sd),
     .timeout_i		  (data_timeout_reg_sd_clk),
     .d_write_o        (d_write),
     .d_read_o         (d_read),
@@ -319,8 +323,8 @@ sd_fifo_filler sd_fifo_filler0(
     .sd_full_o   (rx_fifo_full),
     .wb_empty_o   (),
     .wb_full_o    (tx_fifo_full),
-    .start_tx_i       (data_start_tx),
-    .start_rx_i       (data_start_rx),
+    .start_tx_i       (data_start_tx_wb),
+    .start_rx_i       (data_start_rx_wb),
     .xfersize_i       (xfersize),
     .wb_finish_o      (wb_finish)
 );
@@ -345,9 +349,44 @@ sd_data_xfer_trig sd_data_xfer_trig0 (
     .r_w_i                 (command_reg_sd_clk[`CMD_WITH_DATA] ==
                             2'b01),
     .cmd_int_status_i      (cmd_int_status_reg_sd_clk),
-    .start_tx_o            (data_start_tx),
-    .start_rx_o            (data_start_rx)
+    .start_tx_o            (data_start_tx_sd0),
+    .start_rx_o            (data_start_rx_sd0)
     );
+
+//
+// Need to delay start strobes a little
+//
+delay_pipe #(.DELAY(5), .W(1), .INIT(0)) u_start_tx_delay (
+    .clk (sd_clk_o),
+    .rst (wb_rst_i | software_reset_reg_sd_clk[0]),
+    .in  ({data_start_tx_sd0}),
+    .out ({data_start_tx_sd})
+);
+
+delay_pipe #(.DELAY(3), .W(1), .INIT(0)) u_start_rx_delay (
+    .clk (sd_clk_o),
+    .rst (wb_rst_i | software_reset_reg_sd_clk[0]),
+    .in  ({data_start_rx_sd0}),
+    .out ({data_start_rx_sd})
+);
+
+//
+// Generate start TX & RX in wb_clk_i domain
+//
+
+sd_data_xfer_trig sd_data_xfer_trig1 (
+    .sd_clk                (wb_clk_i),
+    .rst                   (wb_rst_i | software_reset_reg_wb_clk[0]),
+    .cmd_with_data_start_i (cmd_start_wb_clk &
+                            (command_reg_wb_clk[`CMD_WITH_DATA] !=
+                             2'b00)),
+    .r_w_i                 (command_reg_wb_clk[`CMD_WITH_DATA] ==
+                            2'b01),
+    .cmd_int_status_i      (cmd_int_status_reg_wb_clk),
+    .start_tx_o            (data_start_tx_wb),
+    .start_rx_o            (data_start_rx_wb)
+    );
+
 
 sd_controller_wb sd_controller_wb0(
     .wb_clk_i                       (wb_clk_i),

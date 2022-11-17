@@ -4,6 +4,6 @@ vrf/**/results.xml
 vrf/**/sim_build
 vrf/**/*log.txt
 vrf/**/modelsim.ini
-vrf/**/modelsim.ini
 vrf/**/*.wlf
 vrf/**/transcript
+vrf/run/**/vish_stacktrace.vstf

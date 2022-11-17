@@ -6,6 +6,7 @@ COMPILE_ARGS += -I$(PRJ_ROOT)/rtl/verilog -D VENDOR_FPGA
 endif
 
 VERILOG_SOURCES += \
+	$(PRJ_ROOT)/rtl/verilog/delay.v \
 	$(PRJ_ROOT)/rtl/verilog/bistable_domain_cross.v \
 	$(PRJ_ROOT)/rtl/verilog/byte_en_reg.v \
 	$(PRJ_ROOT)/rtl/verilog/edge_detect.v \

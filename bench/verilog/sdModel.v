@@ -61,10 +61,10 @@
 module sdModel
 #(parameter ramdisk="",
   parameter log_file="") (
-  input sdClk,
+  input wire sdClk,
 `ifdef COCOTB_SIM
-  inout cmd,
-  inout [3:0] dat
+  inout wire cmd,
+  inout wire [3:0] dat
 `else
   tri cmd,
   tri [3:0] dat
@@ -200,6 +200,8 @@ reg add_wrong_cmd_indx;
 reg add_wrong_data_crc;
 
 reg finish_data = 0;
+
+integer blk_cnt = 0;
 
 initial begin
   finish_data = 0;
@@ -858,6 +860,7 @@ always @ (negedge sdClk) begin
      data_send_index<=0;
      outdly_cnt<=0;
      flash_write_cnt<=0;
+     datOut<=4'b1111;
   end
 
 
@@ -973,7 +976,6 @@ always @ (negedge sdClk) begin
 endcase
 end
 
-integer blk_cnt = 0;
 always @(posedge sdClk)
   if (state == ANALYZE_CMD)
     blk_cnt <= 0;
